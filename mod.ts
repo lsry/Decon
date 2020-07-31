@@ -1,0 +1,1 @@
+export {Decon} from "./src/decon.ts"
