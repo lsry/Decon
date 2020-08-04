@@ -35,6 +35,14 @@ class BinReader {
             }
         }
     }
+
+    public async readChar() :Promise<string> {
+        await this.ensure();
+        let res :number[] = [];
+        res.push(this.buf[this.pos]);
+        this.pos++;
+        return decoder.decode(new Uint8Array(res));
+    }
     
     public async readLine() :Promise<string> {
         await this.ensure();
@@ -44,7 +52,7 @@ class BinReader {
             ++this.pos;
             await this.ensure();
         }
-        this.pos++;
+        this.pos++;  
         await this.ensure();
         this.pos++;
         return decoder.decode(new Uint8Array(tarr));
@@ -58,6 +66,56 @@ class Reader {
     public constructor(pcon :Promise<Deno.Conn>) {
         this.binReader = new BinReader(pcon);
         this.str = "";
+    }
+
+    public async getReply() :Promise<String | string[] | number |void> {
+        let s :string = await this.binReader.readChar();
+        switch (s) {
+            case "+":
+                return this.getStatusReply();
+            case "$":
+                return this.getBulkReply();
+            case "*":
+                return this.getMultiBulkReply();
+            case ":":
+                return this.intReply();
+            case "-":
+                return this.getErrorReply();
+        }
+    }
+
+    public async getStatusReply() :Promise<string> {
+        return this.binReader.readLine();
+    }
+
+    public async getBulkReply() :Promise<string> {
+        let n :number = Number(await this.binReader.readLine());
+        if (n == -1) {
+            return "";
+        }
+        return this.binReader.readLine();
+    }
+
+    public async getMultiBulkReply() :Promise<string[]> {
+        let n :number = Number(await this.binReader.readLine());
+        let res :string[] = [];
+        for (let i = 0;i < n;++i) {
+            let s = await this.binReader.readChar();
+            if (s !== '$') {
+                throw new DeconError("wrong reply");
+            }
+            s = await this.getBulkReply();
+            res.push(s);
+        }
+        return res;
+    }
+
+    public async intReply() :Promise<number> {
+        return Number(await this.binReader.readLine());
+    }
+
+    public async getErrorReply() :Promise<void> {
+        throw new DeconError(await this.binReader.readLine());
     }
 }
 
@@ -112,16 +170,39 @@ export class Decon {
     }
 
     public async ping(msg :string) :Promise<string> {
-        this.writer.writeParms("ping", msg);
-        const buf = new Uint8Array(1024);
-        const conc = await this.pconc;
-        await conc.read(buf);
-        return decoder.decode(buf);
+        await this.writer.writeParms("ping", msg);
+        let res = await this.reader.getReply();
+        if (typeof res == 'string') {
+            return res;
+        }
+        throw new DeconError("wrong reply type");
     }
 
-    public async set(key :string, value :string) :Promise<String> {
-        this.writer.writeParms("set",key,value);
-        return "OK";
+    public async set(key :string, value :string) :Promise<string> {
+        await this.writer.writeParms("set",key,value);
+        let res = await this.reader.getReply();
+        if (typeof res == 'string') {
+            return res;
+        }
+        throw new DeconError("wrong reply type");
+    }
+
+    public async get(key :string) :Promise<string> {
+        await this.writer.writeParms("get", key);
+        let res = await this.reader.getReply();
+        if (typeof res == 'string') {
+            return res;
+        }
+        throw new DeconError("wrong reply type");
+    }
+
+    public async incr(key :string) :Promise<number> {
+        await this.writer.writeParms("incr", key);
+        let res = await this.reader.getReply();
+        if (typeof res == 'number') {
+            return res;
+        }
+        throw new DeconError("wrong reply type");
     }
 }
 

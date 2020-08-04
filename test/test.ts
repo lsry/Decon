@@ -1,6 +1,11 @@
 import {Decon} from "../mod.ts"
 
 const conc = new Decon("127.0.0.1",6379);
-conc.ping("你好").then(msg => console.log(msg));
-conc.set("msg","200").then(msg => console.log(msg));
-console.log(new TextEncoder().encode("你好"));
+let msg = await conc.ping("ABC");
+console.log("ABC ",msg);
+msg = await conc.set("msg","300");
+console.log("set ",msg);
+msg = await conc.get("mk");
+console.log("get ",msg);
+let n = await conc.incr('msg');
+console.log("msg: ", n);
